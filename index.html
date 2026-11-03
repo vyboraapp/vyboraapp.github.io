@@ -128,6 +128,20 @@ try {
   .qui.nonlu { background:var(--bleuClair); }
   .qui .texte { font-size:14px; line-height:1.35; }
   .qui .quand { font-size:12px; color:var(--grisTexte); margin-top:2px; }
+
+  /* Messages privés */
+  #chat { max-width:500px; margin:8px auto 24px; background:var(--carte);
+          border:1px solid var(--bord); border-radius:10px; overflow:hidden; }
+  .chat-tete { display:flex; align-items:center; gap:10px; padding:10px 12px;
+               border-bottom:1px solid var(--bord); }
+  #messages { display:flex; flex-direction:column; height:50vh; overflow-y:auto; padding:10px 12px; }
+  .bulle { max-width:75%; padding:8px 12px; border-radius:16px; margin:3px 0;
+           font-size:14px; line-height:1.35; word-wrap:break-word; background:var(--gris); }
+  .bulle.moi { margin-left:auto; background:#0095f6; color:#fff; }
+  .chat-saisie { display:flex; gap:8px; padding:10px 12px; border-top:1px solid var(--bord); }
+  .chat-saisie input { flex:1; min-width:0; padding:10px; border:1px solid var(--bord);
+                       border-radius:20px; font-size:14px; }
+  .chat-saisie button { background:none; border:none; color:#0095f6; font-weight:bold; cursor:pointer; }
 </style>
 </head>
 <body>
@@ -213,6 +227,10 @@ let onglet = "tous";
 let recherche = "";
 let dernierePub = 0;
 let dernierCom = 0;
+let dernierMsg = 0;
+let convActuelle = null;
+let messagesConv = [];
+let arretMessages = null;
 
 // Mode sombre / clair
 function majTheme() {
@@ -342,9 +360,10 @@ $("btnOublie").onclick = async () => {
 
 $("btnQuitter").onclick = () => signOut(auth);
 
-$("btnProfil").onclick = () => ouvrirProfil(nomUtilisateur());
+$("btnProfil").onclick = () => { fermerConv(); ouvrirProfil(nomUtilisateur()); };
 $("btnNotif").onclick = () => voirNotifs();
 $("logo").onclick = () => {
+  fermerConv();
   profilActuel = null;
   recherche = "";
   $("recherche").value = "";
@@ -370,6 +389,7 @@ onAuthStateChanged(auth, user => {
   $("fenetre").style.display = "none";
   arrets.forEach(f => f());
   arrets = [];
+  fermerConv();
   profilActuel = null;
   onglet = "tous";
   recherche = "";
@@ -539,6 +559,7 @@ function voirNotifs() {
     ligne.className = "qui" + (n.lu ? "" : " nonlu");
     ligne.onclick = () => {
       $("fenetre").style.display = "none";
+      fermerConv();
       ouvrirProfil(n.de);
     };
 
@@ -680,14 +701,152 @@ function rendreRecherche() {
   });
 }
 
+// ---------- Messages privés ----------
+
+function fermerConv() {
+  convActuelle = null;
+  messagesConv = [];
+  if (arretMessages) { arretMessages(); arretMessages = null; }
+}
+
+function ouvrirConv(nom) {
+  const cible = pseudosListe[(nom || "").toLowerCase()];
+  if (!cible || !cible.uid) {
+    alert("Cette personne doit d'abord se reconnecter une fois pour pouvoir recevoir des messages.");
+    return;
+  }
+  const participants = [auth.currentUser.uid, cible.uid].sort();
+  convActuelle = {
+    id: participants.join("_"),
+    avec: cible.nom || nom,
+    avecUid: cible.uid,
+    participants: participants
+  };
+  messagesConv = [];
+  if (arretMessages) arretMessages();
+  const q = query(collection(db, "conversations", convActuelle.id, "messages"), orderBy("date"));
+  arretMessages = onSnapshot(q, snap => {
+    messagesConv = snap.docs.map(d => d.data());
+    majMessages();
+  }, () => {
+    messagesConv = [];
+    majMessages();
+  });
+  rendre();
+  window.scrollTo(0, 0);
+}
+
+function majMessages() {
+  const zone = $("messages");
+  if (!zone) return;
+  zone.innerHTML = "";
+  if (messagesConv.length === 0) {
+    const v = document.createElement("div");
+    v.className = "vide";
+    v.textContent = "Aucun message. Dis bonjour 👋";
+    zone.append(v);
+    return;
+  }
+  const moi = auth.currentUser.uid;
+  messagesConv.forEach(m => {
+    const b = document.createElement("div");
+    b.className = "bulle" + (m.de === moi ? " moi" : "");
+    b.textContent = m.texte;
+    zone.append(b);
+  });
+  zone.scrollTop = zone.scrollHeight;
+}
+
+async function envoyer(champ) {
+  const c = convActuelle;
+  if (!c) return;
+  const t = champ.value.trim().slice(0, 500);
+  if (!t) return;
+  if (Date.now() - dernierMsg < 700) return;
+  dernierMsg = Date.now();
+  champ.value = "";
+  const noms = {};
+  noms[auth.currentUser.uid] = nomUtilisateur();
+  noms[c.avecUid] = c.avec;
+  try {
+    await setDoc(doc(db, "conversations", c.id), {
+      participants: c.participants,
+      noms: noms,
+      dernier: t.slice(0, 60),
+      date: serverTimestamp()
+    }, { merge: true });
+    await addDoc(collection(db, "conversations", c.id, "messages"), {
+      de: auth.currentUser.uid,
+      deNom: nomUtilisateur(),
+      texte: t,
+      date: serverTimestamp()
+    });
+  } catch (e) {
+    alert("Message non envoyé : " + (e.code || "erreur"));
+    champ.value = t;
+  }
+}
+
+function rendreConv() {
+  const c = convActuelle;
+
+  const retour = document.createElement("div");
+  retour.className = "retour";
+  const br = document.createElement("button");
+  br.textContent = "← Retour";
+  br.onclick = () => { fermerConv(); rendre(); window.scrollTo(0, 0); };
+  retour.append(br);
+
+  const boite = document.createElement("div");
+  boite.id = "chat";
+
+  const tete = document.createElement("div");
+  tete.className = "chat-tete";
+  const nom = document.createElement("div");
+  nom.className = "nom";
+  nom.textContent = c.avec;
+  tete.append(avatar(c.avec, false), nom);
+
+  const zone = document.createElement("div");
+  zone.id = "messages";
+
+  const saisie = document.createElement("div");
+  saisie.className = "chat-saisie";
+  const champ = document.createElement("input");
+  champ.type = "text";
+  champ.maxLength = 500;
+  champ.placeholder = "Écrire un message...";
+  champ.onkeydown = e => { if (e.key === "Enter") envoyer(champ); };
+  const bouton = document.createElement("button");
+  bouton.textContent = "Envoyer";
+  bouton.onclick = () => envoyer(champ);
+  saisie.append(champ, bouton);
+
+  boite.append(tete, zone, saisie);
+  $("fil").append(retour, boite);
+  majMessages();
+}
+
 function rendre() {
-  $("fil").innerHTML = "";
-  const cherche = !profilActuel && recherche.trim() !== "";
-  $("barre").style.display = profilActuel ? "none" : "flex";
-  $("publier").style.display = (profilActuel || cherche) ? "none" : "block";
-  $("onglets").style.display = (profilActuel || cherche) ? "none" : "flex";
+  const dansConv = !!convActuelle;
+  const cherche = !profilActuel && !dansConv && recherche.trim() !== "";
+  $("barre").style.display = (profilActuel || dansConv) ? "none" : "flex";
+  $("publier").style.display = (profilActuel || dansConv || cherche) ? "none" : "block";
+  $("onglets").style.display = (profilActuel || dansConv || cherche) ? "none" : "flex";
   $("ongTous").className = "ong" + (onglet === "tous" ? " actif" : "");
   $("ongAbos").className = "ong" + (onglet === "abos" ? " actif" : "");
+
+  // La conversation n'est reconstruite que si elle n'est pas déjà affichée
+  // (sinon on perdrait le texte en cours d'écriture)
+  if (dansConv) {
+    if (!$("chat")) {
+      $("fil").innerHTML = "";
+      rendreConv();
+    }
+    return;
+  }
+
+  $("fil").innerHTML = "";
   if (profilActuel) { rendreProfil(); return; }
   if (cherche) { rendreRecherche(); return; }
 
@@ -786,7 +945,12 @@ function rendreProfil() {
         alert("Erreur : " + (e.code || "impossible"));
       }
     };
-    infos.append(bouton);
+    const message = document.createElement("button");
+    message.className = "btn gris";
+    message.style.marginLeft = "8px";
+    message.textContent = "✉️ Message";
+    message.onclick = () => ouvrirConv(profilActuel);
+    infos.append(bouton, message);
   }
 
   tete.append(av, infos);
@@ -937,4 +1101,4 @@ function carte(d) {
 }
 </script>
 </body>
-    </html>
+  </html>
