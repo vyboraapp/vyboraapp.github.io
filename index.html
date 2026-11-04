@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Photogram</title>
+<title>Vybora</title>
 <script>
 try {
   var t = localStorage.getItem("theme");
@@ -22,20 +22,19 @@ try {
     --gris:#2a2a2a; --grisTexte:#a3a3a3; --champ:#262626; --bleuClair:#1b2a3a;
   }
   * { box-sizing:border-box; }
-  body { margin:0; font-family:Arial,sans-serif; background:var(--fond); color:var(--texte); }
+  body { margin:0; padding-bottom:72px; font-family:Arial,sans-serif; background:var(--fond); color:var(--texte); }
   input { color:var(--texte); background:var(--champ); font-family:inherit; }
   input::placeholder { color:var(--grisTexte); }
-  .logo { font-family:"Brush Script MT","Segoe Script",cursive; font-size:30px;
-          background:linear-gradient(45deg,#f09433,#dc2743,#bc1888);
-          -webkit-background-clip:text; background-clip:text;
-          -webkit-text-fill-color:transparent; color:transparent; }
-  header { background:var(--carte); padding:8px 12px; text-align:center;
-           border-bottom:1px solid var(--bord); position:sticky; top:0; z-index:5; }
-  header .logo { font-size:28px; cursor:pointer; }
-  header button { position:absolute; right:10px; top:14px; background:none; border:none;
-                  color:#0095f6; font-weight:bold; font-size:14px; cursor:pointer; }
-  header button#btnProfil { left:10px; right:auto; }
-  header button#btnNotif { left:68px; right:auto; font-size:15px; }
+  svg { fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+
+  .logo { font-weight:800; font-size:26px; color:#c13584; letter-spacing:-0.5px; cursor:pointer; }
+  header { background:var(--carte); padding:8px 14px; display:flex; justify-content:space-between;
+           align-items:center; border-bottom:1px solid var(--bord); position:sticky; top:0; z-index:5; }
+  .tete-droite { display:flex; gap:8px; align-items:center; }
+  header .btnTheme { width:36px; height:36px; font-size:16px; }
+  .iconeTete { background:none; border:none; color:var(--texte); padding:6px; cursor:pointer; }
+  .iconeTete svg { width:26px; height:26px; display:block; }
+  .iconeTete.actif { color:#c13584; }
 
   .btnTheme { width:40px; height:40px; border-radius:50%; border:none; background:var(--gris);
               font-size:18px; cursor:pointer; flex-shrink:0; }
@@ -43,7 +42,7 @@ try {
 
   #auth { position:relative; max-width:340px; margin:40px auto; padding:28px 22px;
           background:var(--carte); border:1px solid var(--bord); border-radius:10px; text-align:center; }
-  #auth .logo { font-size:44px; margin:0 0 16px; }
+  #auth .logo { font-size:40px; margin:0 0 16px; cursor:default; }
   #auth input { width:100%; padding:11px; margin:5px 0;
                 border:1px solid var(--bord); border-radius:6px; font-size:14px; }
   .btn { background:#0095f6; color:#fff; border:none; border-radius:8px;
@@ -56,12 +55,19 @@ try {
   #msg { color:#ed4956; font-size:13px; min-height:18px; }
   #msg.ok { color:#2e7d32; }
 
-  #barre { max-width:500px; margin:12px auto 0; padding:0 12px; display:flex; gap:8px; align-items:center; }
-  #recherche { flex:1; min-width:0; padding:11px 14px; border:1px solid var(--bord); border-radius:20px;
+  #barre { width:calc(100% - 24px); max-width:500px; margin:12px auto 0; display:none; }
+  #recherche { width:100%; padding:11px 14px; border:1px solid var(--bord); border-radius:20px;
                background:var(--gris); font-size:14px; }
 
-  #publier { max-width:500px; margin:14px auto; padding:14px; background:var(--carte);
-             border:1px solid var(--bord); border-radius:10px; }
+  #creer { width:calc(100% - 24px); max-width:500px; margin:14px auto; display:none; }
+  .creerCarte { background:var(--gris); border-radius:14px; padding:22px 14px;
+                text-align:center; cursor:pointer; }
+  .creerCarte svg { width:34px; height:34px; }
+  .creerTitre { font-weight:bold; font-size:17px; margin-top:8px; }
+  .creerSous { color:var(--grisTexte); font-size:14px; margin-top:4px; }
+
+  #publier { width:calc(100% - 24px); max-width:500px; margin:14px auto; padding:14px;
+             background:var(--carte); border:1px solid var(--bord); border-radius:10px; display:none; }
   #publier input[type=text] { width:100%; padding:10px; margin:10px 0;
              border:1px solid var(--bord); border-radius:6px; font-size:14px; }
   #photo { display:none; }
@@ -69,14 +75,12 @@ try {
              background:var(--gris); font-weight:bold; font-size:14px; cursor:pointer; }
   #etat { font-size:13px; margin-left:8px; }
 
-  #onglets { max-width:500px; margin:0 auto; padding:0 12px; display:flex; gap:8px; }
-  .ong { flex:1; padding:9px; border:none; border-radius:8px; background:var(--gris);
-         font-weight:bold; font-size:14px; cursor:pointer; color:var(--texte); }
-  .ong.actif { background:#0095f6; color:#fff; }
+  .titre { max-width:500px; margin:14px auto 0; padding:0 12px; font-weight:bold; font-size:18px; }
 
   .resultat { max-width:500px; margin:8px auto; padding:10px 12px; background:var(--carte);
               border:1px solid var(--bord); border-radius:10px; display:flex;
               align-items:center; gap:10px; cursor:pointer; }
+  .dernier { font-size:13px; color:var(--grisTexte); margin-top:2px; }
 
   .post { background:var(--carte); max-width:500px; margin:14px auto;
           border:1px solid var(--bord); border-radius:10px; overflow:hidden; }
@@ -142,13 +146,25 @@ try {
   .chat-saisie input { flex:1; min-width:0; padding:10px; border:1px solid var(--bord);
                        border-radius:20px; font-size:14px; }
   .chat-saisie button { background:none; border:none; color:#0095f6; font-weight:bold; cursor:pointer; }
+
+  /* Barre du bas */
+  #nav { position:fixed; bottom:0; left:0; right:0; height:56px; background:var(--carte);
+         border-top:1px solid var(--bord); display:flex; justify-content:space-around;
+         align-items:center; z-index:6; }
+  #nav button { background:none; border:none; color:var(--texte); padding:8px 14px;
+                position:relative; cursor:pointer; }
+  #nav button.actif { color:#c13584; }
+  #nav svg { width:26px; height:26px; display:block; }
+  .badge { position:absolute; top:2px; right:4px; background:#ed4956; color:#fff; font-size:10px;
+           font-weight:bold; border-radius:10px; min-width:16px; height:16px; line-height:16px;
+           text-align:center; padding:0 4px; display:none; }
 </style>
 </head>
 <body>
 
 <div id="auth">
   <button class="btnTheme petitTheme" type="button">🌙</button>
-  <div class="logo">Photogram</div>
+  <div class="logo">Vybora</div>
   <input id="pseudo" type="text" maxlength="20" placeholder="Pseudo (seulement pour s'inscrire)">
   <input id="email" type="email" placeholder="Email">
   <input id="mdp" type="password" placeholder="Mot de passe (8 caractères min.)">
@@ -160,15 +176,25 @@ try {
 
 <div id="app" style="display:none">
   <header>
-    <button id="btnProfil">Profil</button>
-    <button id="btnNotif">🔔</button>
-    <span class="logo" id="logo">Photogram</span>
-    <button id="btnQuitter">Quitter</button>
+    <span class="logo" id="logo">Vybora</span>
+    <div class="tete-droite">
+      <button class="btnTheme" type="button">🌙</button>
+      <button class="iconeTete" id="btnMsgs" type="button" aria-label="Messages">
+        <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
   </header>
 
   <div id="barre">
     <input id="recherche" type="search" maxlength="30" placeholder="🔍 Rechercher une personne...">
-    <button class="btnTheme" type="button">🌙</button>
+  </div>
+
+  <div id="creer">
+    <div class="creerCarte" id="creerCarte">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
+      <div class="creerTitre">Créer une publication</div>
+      <div class="creerSous">Photo</div>
+    </div>
   </div>
 
   <div id="publier">
@@ -179,12 +205,26 @@ try {
     <button class="btn" id="btnPublier">Publier</button>
   </div>
 
-  <div id="onglets">
-    <button class="ong actif" id="ongTous">Tous</button>
-    <button class="ong" id="ongAbos">Abonnements</button>
-  </div>
-
   <div id="fil"></div>
+
+  <nav id="nav">
+    <button id="navAccueil" type="button" aria-label="Accueil">
+      <svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z"/></svg>
+    </button>
+    <button id="navRecherche" type="button" aria-label="Recherche">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+    </button>
+    <button id="navAbos" type="button" aria-label="Abonnements">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M10 8.5l5 3.5-5 3.5z"/></svg>
+    </button>
+    <button id="navNotif" type="button" aria-label="Notifications">
+      <svg viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21.2l7.8-7.7 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+      <span class="badge" id="badgeNotif">0</span>
+    </button>
+    <button id="navProfil" type="button" aria-label="Profil">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+    </button>
+  </nav>
 </div>
 
 <div id="fenetre">
@@ -222,8 +262,11 @@ let photos = {};
 let suivis = {};
 let pseudosListe = {};
 let notifs = [];
+let convs = [];
 let profilActuel = null;
-let onglet = "tous";
+let vue = "accueil";
+let vueConvs = false;
+let formOuvert = false;
 let recherche = "";
 let dernierePub = 0;
 let dernierCom = 0;
@@ -358,20 +401,35 @@ $("btnOublie").onclick = async () => {
   }
 };
 
-$("btnQuitter").onclick = () => signOut(auth);
-
-$("btnProfil").onclick = () => { fermerConv(); ouvrirProfil(nomUtilisateur()); };
-$("btnNotif").onclick = () => voirNotifs();
-$("logo").onclick = () => {
+// Navigation : barre du bas et en-tête
+function aller(v) {
   fermerConv();
   profilActuel = null;
-  recherche = "";
-  $("recherche").value = "";
+  vueConvs = false;
+  vue = v;
+  if (v !== "recherche") {
+    recherche = "";
+    $("recherche").value = "";
+  }
+  rendre();
+  window.scrollTo(0, 0);
+  if (v === "recherche") $("recherche").focus();
+}
+
+$("logo").onclick = () => aller("accueil");
+$("navAccueil").onclick = () => aller("accueil");
+$("navRecherche").onclick = () => aller("recherche");
+$("navAbos").onclick = () => aller("abos");
+$("navNotif").onclick = () => voirNotifs();
+$("navProfil").onclick = () => ouvrirProfil(nomUtilisateur());
+$("btnMsgs").onclick = () => {
+  fermerConv();
+  profilActuel = null;
+  vueConvs = true;
   rendre();
   window.scrollTo(0, 0);
 };
-$("ongTous").onclick = () => { onglet = "tous"; rendre(); };
-$("ongAbos").onclick = () => { onglet = "abos"; rendre(); };
+$("creerCarte").onclick = () => { formOuvert = !formOuvert; rendre(); };
 $("recherche").oninput = () => { recherche = $("recherche").value; rendre(); };
 
 $("fermer").onclick = () => { $("fenetre").style.display = "none"; };
@@ -391,7 +449,9 @@ onAuthStateChanged(auth, user => {
   arrets = [];
   fermerConv();
   profilActuel = null;
-  onglet = "tous";
+  vue = "accueil";
+  vueConvs = false;
+  formOuvert = false;
   recherche = "";
   $("recherche").value = "";
   docs = [];
@@ -399,6 +459,7 @@ onAuthStateChanged(auth, user => {
   suivis = {};
   pseudosListe = {};
   notifs = [];
+  convs = [];
   majCloche();
   if (user) {
     afficherFil();
@@ -491,7 +552,9 @@ $("btnPublier").onclick = async () => {
     dernierePub = Date.now();
     $("photo").value = "";
     $("legende").value = "";
-    $("etat").textContent = "Publié ✅";
+    $("etat").textContent = "";
+    formOuvert = false;
+    rendre();
   } catch (e) {
     $("etat").textContent = "Erreur : " + (e.code || e.message || "impossible");
   }
@@ -526,13 +589,20 @@ function afficherFil() {
     notifs = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
     majCloche();
   }, () => {}));
+  const qc = query(collection(db, "conversations"),
+                   where("participants", "array-contains", auth.currentUser.uid));
+  arrets.push(onSnapshot(qc, snap => {
+    convs = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+    if (vueConvs && !convActuelle) rendre();
+  }, () => {}));
 }
 
-// Cloche avec le nombre de notifications non lues
+// Pastille rouge sur le cœur avec le nombre de notifications non lues
 function majCloche() {
   const n = notifs.filter(x => !x.lu).length;
-  $("btnNotif").textContent = n > 0 ? "🔔 " + n : "🔔";
-  $("btnNotif").style.color = n > 0 ? "#ed4956" : "#0095f6";
+  const b = $("badgeNotif");
+  b.textContent = n > 9 ? "9+" : String(n);
+  b.style.display = n > 0 ? "block" : "none";
 }
 
 function msNotif(n) {
@@ -559,7 +629,6 @@ function voirNotifs() {
     ligne.className = "qui" + (n.lu ? "" : " nonlu");
     ligne.onclick = () => {
       $("fenetre").style.display = "none";
-      fermerConv();
       ouvrirProfil(n.de);
     };
 
@@ -591,6 +660,8 @@ function voirNotifs() {
 }
 
 function ouvrirProfil(nom) {
+  fermerConv();
+  vueConvs = false;
   profilActuel = nom;
   recherche = "";
   $("recherche").value = "";
@@ -827,14 +898,70 @@ function rendreConv() {
   majMessages();
 }
 
+// Liste des conversations (avion en papier)
+function rendreConvs() {
+  const t = document.createElement("div");
+  t.className = "titre";
+  t.textContent = "Messages";
+  $("fil").append(t);
+
+  const moi = auth.currentUser.uid;
+  const triees = convs.slice().sort((a, b) => {
+    const ma = a.date && a.date.toMillis ? a.date.toMillis() : Date.now();
+    const mb = b.date && b.date.toMillis ? b.date.toMillis() : Date.now();
+    return mb - ma;
+  });
+
+  if (triees.length === 0) {
+    const v = document.createElement("div");
+    v.className = "vide";
+    v.textContent = "Aucune conversation. Va sur le profil d'un ami et appuie sur « ✉️ Message ».";
+    $("fil").append(v);
+    return;
+  }
+
+  triees.forEach(c => {
+    const autre = (c.participants || []).find(u => u !== moi);
+    const nom = (c.noms && c.noms[autre]) || "Utilisateur";
+    const ms = c.date && c.date.toMillis ? c.date.toMillis() : Date.now();
+
+    const ligne = document.createElement("div");
+    ligne.className = "resultat";
+    ligne.onclick = () => ouvrirConv(nom);
+
+    const colonne = document.createElement("div");
+    const n = document.createElement("div");
+    n.className = "nom";
+    n.textContent = nom;
+    const d = document.createElement("div");
+    d.className = "dernier";
+    d.textContent = (c.dernier || "") + " · " + depuis(ms);
+    colonne.append(n, d);
+
+    ligne.append(avatar(nom, false), colonne);
+    $("fil").append(ligne);
+  });
+}
+
+// Met en couleur le bouton de la barre du bas qui correspond à la page
+function majNav() {
+  const moi = nomUtilisateur().toLowerCase();
+  const surFil = !profilActuel && !convActuelle && !vueConvs;
+  $("navAccueil").className = (surFil && vue === "accueil") ? "actif" : "";
+  $("navRecherche").className = (surFil && vue === "recherche") ? "actif" : "";
+  $("navAbos").className = (surFil && vue === "abos") ? "actif" : "";
+  $("navProfil").className =
+    (profilActuel && !convActuelle && profilActuel.toLowerCase() === moi) ? "actif" : "";
+  $("btnMsgs").className = "iconeTete" + ((vueConvs || convActuelle) ? " actif" : "");
+}
+
 function rendre() {
   const dansConv = !!convActuelle;
-  const cherche = !profilActuel && !dansConv && recherche.trim() !== "";
-  $("barre").style.display = (profilActuel || dansConv) ? "none" : "flex";
-  $("publier").style.display = (profilActuel || dansConv || cherche) ? "none" : "block";
-  $("onglets").style.display = (profilActuel || dansConv || cherche) ? "none" : "flex";
-  $("ongTous").className = "ong" + (onglet === "tous" ? " actif" : "");
-  $("ongAbos").className = "ong" + (onglet === "abos" ? " actif" : "");
+  const surFil = !profilActuel && !dansConv && !vueConvs;
+  $("creer").style.display = (surFil && vue === "accueil") ? "block" : "none";
+  $("publier").style.display = (surFil && vue === "accueil" && formOuvert) ? "block" : "none";
+  $("barre").style.display = (surFil && vue === "recherche") ? "block" : "none";
+  majNav();
 
   // La conversation n'est reconstruite que si elle n'est pas déjà affichée
   // (sinon on perdrait le texte en cours d'écriture)
@@ -848,16 +975,17 @@ function rendre() {
 
   $("fil").innerHTML = "";
   if (profilActuel) { rendreProfil(); return; }
-  if (cherche) { rendreRecherche(); return; }
+  if (vueConvs) { rendreConvs(); return; }
+  if (vue === "recherche") { rendreRecherche(); return; }
 
   let liste = docs;
-  if (onglet === "abos") {
+  if (vue === "abos") {
     const moi = nomUtilisateur().toLowerCase();
     const mesAbos = suivis[moi] || [];
     if (mesAbos.length === 0) {
       const v = document.createElement("div");
       v.className = "vide";
-      v.textContent = "Tu ne suis personne. Cherche une personne ou appuie sur son nom, puis sur « S'abonner ».";
+      v.textContent = "Tu ne suis personne. Cherche une personne avec la loupe 🔍, ouvre son profil, puis appuie sur « S'abonner ».";
       $("fil").append(v);
     }
     liste = docs.filter(d => {
@@ -925,7 +1053,11 @@ function rendreProfil() {
       }
     };
     lab.append(champ);
-    infos.append(lab, info);
+    const quitter = document.createElement("button");
+    quitter.className = "btn gris";
+    quitter.textContent = "Se déconnecter";
+    quitter.onclick = () => signOut(auth);
+    infos.append(lab, info, document.createElement("br"), quitter);
   } else {
     const bouton = document.createElement("button");
     bouton.className = "btn" + (jeSuis ? " gris" : "");
@@ -1101,4 +1233,4 @@ function carte(d) {
 }
 </script>
 </body>
-  </html>
+                                         </html>
