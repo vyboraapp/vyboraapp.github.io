@@ -70,10 +70,15 @@ try {
              background:var(--carte); border:1px solid var(--bord); border-radius:10px; display:none; }
   #publier input[type=text] { width:100%; padding:10px; margin:10px 0;
              border:1px solid var(--bord); border-radius:6px; font-size:14px; }
-  #photo { display:none; }
-  .fichier { display:inline-block; padding:10px 14px; border-radius:8px;
+  #photo, #video { display:none; }
+  .fichier { display:inline-block; padding:10px 14px; border-radius:8px; margin-right:6px;
              background:var(--gris); font-weight:bold; font-size:14px; cursor:pointer; }
-  #etat { font-size:13px; margin-left:8px; }
+  #etat { display:block; font-size:13px; margin-top:8px; }
+
+  #onglets { width:calc(100% - 24px); max-width:500px; margin:0 auto; display:none; gap:8px; }
+  .ong { flex:1; padding:9px; border:none; border-radius:8px; background:var(--gris);
+         font-weight:bold; font-size:14px; cursor:pointer; color:var(--texte); }
+  .ong.actif { background:#0095f6; color:#fff; }
 
   .titre { max-width:500px; margin:14px auto 0; padding:0 12px; font-weight:bold; font-size:18px; }
 
@@ -95,6 +100,7 @@ try {
   .suppr { margin-left:auto; background:none; border:none; font-size:20px; cursor:pointer; padding:4px 6px; }
   .signaler { font-size:16px; opacity:.7; }
   .post img.photo { width:100%; display:block; background:var(--gris); }
+  .post video { width:100%; display:block; background:#000; max-height:80vh; }
   .actions { padding:10px 12px 4px; font-size:26px; }
   .coeur { cursor:pointer; }
   .nblikes { font-size:14px; font-weight:bold; margin-left:8px; cursor:pointer; }
@@ -118,6 +124,9 @@ try {
   .grille { max-width:500px; margin:0 auto 24px; display:grid;
             grid-template-columns:repeat(3,1fr); gap:3px; }
   .grille img { width:100%; aspect-ratio:1/1; object-fit:cover; display:block; background:var(--gris); }
+  .cell { position:relative; }
+  .cell .play { position:absolute; right:6px; top:6px; color:#fff; font-size:16px;
+                text-shadow:0 0 4px #000; }
   .vide { text-align:center; color:var(--grisTexte); padding:20px; font-size:14px; }
 
   #fenetre { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.5);
@@ -193,16 +202,23 @@ try {
     <div class="creerCarte" id="creerCarte">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
       <div class="creerTitre">Créer une publication</div>
-      <div class="creerSous">Photo</div>
+      <div class="creerSous">Photo ou vidéo</div>
     </div>
   </div>
 
   <div id="publier">
-    <label class="fichier" for="photo">📷 Choisir une photo</label>
+    <label class="fichier" for="photo">📷 Photo</label>
     <input id="photo" type="file" accept="image/*">
+    <label class="fichier" for="video">🎬 Vidéo</label>
+    <input id="video" type="file" accept="video/*">
     <span id="etat"></span>
     <input id="legende" type="text" maxlength="300" placeholder="Écris une légende...">
     <button class="btn" id="btnPublier">Publier</button>
+  </div>
+
+  <div id="onglets">
+    <button class="ong actif" id="ongTous">Tous</button>
+    <button class="ong" id="ongAbos">Abonnements</button>
   </div>
 
   <div id="fil"></div>
@@ -214,7 +230,7 @@ try {
     <button id="navRecherche" type="button" aria-label="Recherche">
       <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
     </button>
-    <button id="navAbos" type="button" aria-label="Abonnements">
+    <button id="navVideos" type="button" aria-label="Vidéos">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M10 8.5l5 3.5-5 3.5z"/></svg>
     </button>
     <button id="navNotif" type="button" aria-label="Notifications">
@@ -252,12 +268,19 @@ const firebaseConfig = {
   appId: "1:402209948551:web:7330d1625695eee2e50922"
 };
 
+// Cloudinary (stockage des vidéos)
+const CLOUD = "kwxwbmxg";
+const PRESET = "vybora_videos";
+const VIDEO_MAX_MO = 40;
+const VIDEO_MAX_SEC = 60;
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const $ = id => document.getElementById(id);
 let arrets = [];
 let docs = [];
+let videosDocs = [];
 let photos = {};
 let suivis = {};
 let pseudosListe = {};
@@ -265,6 +288,7 @@ let notifs = [];
 let convs = [];
 let profilActuel = null;
 let vue = "accueil";
+let onglet = "tous";
 let vueConvs = false;
 let formOuvert = false;
 let recherche = "";
@@ -419,7 +443,7 @@ function aller(v) {
 $("logo").onclick = () => aller("accueil");
 $("navAccueil").onclick = () => aller("accueil");
 $("navRecherche").onclick = () => aller("recherche");
-$("navAbos").onclick = () => aller("abos");
+$("navVideos").onclick = () => aller("videos");
 $("navNotif").onclick = () => voirNotifs();
 $("navProfil").onclick = () => ouvrirProfil(nomUtilisateur());
 $("btnMsgs").onclick = () => {
@@ -430,6 +454,8 @@ $("btnMsgs").onclick = () => {
   window.scrollTo(0, 0);
 };
 $("creerCarte").onclick = () => { formOuvert = !formOuvert; rendre(); };
+$("ongTous").onclick = () => { onglet = "tous"; rendre(); };
+$("ongAbos").onclick = () => { onglet = "abos"; rendre(); };
 $("recherche").oninput = () => { recherche = $("recherche").value; rendre(); };
 
 $("fermer").onclick = () => { $("fenetre").style.display = "none"; };
@@ -437,9 +463,14 @@ $("fenetre").onclick = e => {
   if (e.target === $("fenetre")) $("fenetre").style.display = "none";
 };
 
-$("photo").onchange = () => {
-  $("etat").textContent = $("photo").files[0] ? "Photo choisie ✅" : "";
-};
+// Choix du fichier : une photo OU une vidéo, jamais les deux
+function majChoix() {
+  const f = $("photo").files[0] || $("video").files[0];
+  if (!f) { $("etat").textContent = ""; return; }
+  $("etat").textContent = $("video").files[0] ? "Vidéo choisie ✅" : "Photo choisie ✅";
+}
+$("photo").onchange = () => { if ($("photo").files[0]) $("video").value = ""; majChoix(); };
+$("video").onchange = () => { if ($("video").files[0]) $("photo").value = ""; majChoix(); };
 
 onAuthStateChanged(auth, user => {
   $("auth").style.display = user ? "none" : "block";
@@ -450,11 +481,13 @@ onAuthStateChanged(auth, user => {
   fermerConv();
   profilActuel = null;
   vue = "accueil";
+  onglet = "tous";
   vueConvs = false;
   formOuvert = false;
   recherche = "";
   $("recherche").value = "";
   docs = [];
+  videosDocs = [];
   photos = {};
   suivis = {};
   pseudosListe = {};
@@ -522,14 +555,62 @@ function reduireCarre(fichier, taille) {
   });
 }
 
+// Durée d'une vidéo en secondes (0 si on ne peut pas la lire)
+function dureeVideo(fichier) {
+  return new Promise(res => {
+    const v = document.createElement("video");
+    v.preload = "metadata";
+    const u = URL.createObjectURL(fichier);
+    v.onloadedmetadata = () => { URL.revokeObjectURL(u); res(v.duration || 0); };
+    v.onerror = () => { URL.revokeObjectURL(u); res(0); };
+    v.src = u;
+  });
+}
+
+// Envoie la vidéo sur Cloudinary et renvoie son lien
+function envoyerVideo(fichier, progression) {
+  return new Promise((ok, erreur) => {
+    const fd = new FormData();
+    fd.append("file", fichier);
+    fd.append("upload_preset", PRESET);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "https://api.cloudinary.com/v1_1/" + CLOUD + "/video/upload");
+    xhr.upload.onprogress = e => {
+      if (e.lengthComputable) progression(Math.round(e.loaded * 100 / e.total));
+    };
+    xhr.onload = () => {
+      let rep = {};
+      try { rep = JSON.parse(xhr.responseText); } catch (e) {}
+      if (xhr.status >= 200 && xhr.status < 300 && rep.secure_url) ok(rep.secure_url);
+      else erreur(new Error((rep.error && rep.error.message) || ("erreur " + xhr.status)));
+    };
+    xhr.onerror = () => erreur(new Error("problème de connexion"));
+    xhr.send(fd);
+  });
+}
+
+// Image d'aperçu d'une vidéo Cloudinary
+function miniature(url) {
+  return String(url).replace(/\.[A-Za-z0-9]+$/, ".jpg");
+}
+
+function videoValide(url) {
+  return typeof url === "string" && url.startsWith("https://res.cloudinary.com/");
+}
+
 $("btnPublier").onclick = async () => {
-  const fichier = $("photo").files[0];
-  if (!fichier) { $("etat").textContent = "Choisis une photo d'abord"; return; }
-  if (!fichier.type.startsWith("image/")) {
-    $("etat").textContent = "Ce fichier n'est pas une image";
+  const fichier = $("photo").files[0] || $("video").files[0];
+  if (!fichier) { $("etat").textContent = "Choisis une photo ou une vidéo d'abord"; return; }
+  const estVideo = !!$("video").files[0] || fichier.type.startsWith("video/");
+  if (!estVideo && !fichier.type.startsWith("image/")) {
+    $("etat").textContent = "Ce fichier n'est ni une photo ni une vidéo";
     return;
   }
-  if (fichier.size > 15 * 1024 * 1024) {
+  if (estVideo && fichier.size > VIDEO_MAX_MO * 1024 * 1024) {
+    $("etat").textContent = "Vidéo trop lourde (" + VIDEO_MAX_MO + " Mo maximum)";
+    return;
+  }
+  if (!estVideo && fichier.size > 15 * 1024 * 1024) {
     $("etat").textContent = "Photo trop lourde (15 Mo maximum)";
     return;
   }
@@ -540,23 +621,45 @@ $("btnPublier").onclick = async () => {
   $("btnPublier").disabled = true;
   $("etat").textContent = "Publication...";
   try {
-    const img = await reduirePhoto(fichier);
-    await addDoc(collection(db, "posts"), {
-      user: nomUtilisateur(),
-      texte: $("legende").value.trim().slice(0, 300),
-      img: img,
-      likes: [],
-      commentaires: [],
-      date: serverTimestamp()
-    });
+    if (estVideo) {
+      const d = await dureeVideo(fichier);
+      if (d > VIDEO_MAX_SEC) throw new Error("vidéo trop longue (" + VIDEO_MAX_SEC + " secondes maximum)");
+      $("etat").textContent = "Envoi de la vidéo... 0 %";
+      const url = await envoyerVideo(fichier, p => {
+        $("etat").textContent = "Envoi de la vidéo... " + p + " %";
+      });
+      await addDoc(collection(db, "videos"), {
+        user: nomUtilisateur(),
+        texte: $("legende").value.trim().slice(0, 300),
+        video: url,
+        likes: [],
+        commentaires: [],
+        date: serverTimestamp()
+      });
+    } else {
+      const img = await reduirePhoto(fichier);
+      await addDoc(collection(db, "posts"), {
+        user: nomUtilisateur(),
+        texte: $("legende").value.trim().slice(0, 300),
+        img: img,
+        likes: [],
+        commentaires: [],
+        date: serverTimestamp()
+      });
+    }
     dernierePub = Date.now();
     $("photo").value = "";
+    $("video").value = "";
     $("legende").value = "";
     $("etat").textContent = "";
     formOuvert = false;
     rendre();
   } catch (e) {
-    $("etat").textContent = "Erreur : " + (e.code || e.message || "impossible");
+    if (estVideo && e.code === "permission-denied") {
+      $("etat").textContent = "Erreur : les règles Firebase des vidéos ne sont pas encore publiées";
+    } else {
+      $("etat").textContent = "Erreur : " + (e.code || e.message || "impossible");
+    }
   }
   $("btnPublier").disabled = false;
 };
@@ -567,6 +670,11 @@ function afficherFil() {
     docs = snap.docs;
     rendre();
   }));
+  const qv = query(collection(db, "videos"), orderBy("date", "desc"));
+  arrets.push(onSnapshot(qv, snap => {
+    videosDocs = snap.docs;
+    rendre();
+  }, () => {}));
   arrets.push(onSnapshot(collection(db, "profils"), snap => {
     photos = {};
     snap.forEach(d => { photos[d.id] = d.data().img; });
@@ -595,6 +703,15 @@ function afficherFil() {
     convs = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
     if (vueConvs && !convActuelle) rendre();
   }, () => {}));
+}
+
+// Photos et vidéos ensemble, les plus récentes d'abord
+function msDoc(d) {
+  const t = d.data().date;
+  return t && t.toMillis ? t.toMillis() : Date.now();
+}
+function tousPosts() {
+  return docs.concat(videosDocs).sort((a, b) => msDoc(b) - msDoc(a));
 }
 
 // Pastille rouge sur le cœur avec le nombre de notifications non lues
@@ -638,7 +755,7 @@ function voirNotifs() {
     const nom = document.createElement("b");
     nom.textContent = n.de + " ";
     let action = "";
-    if (n.type === "like") action = "a aimé ta photo";
+    if (n.type === "like") action = "a aimé ta publication";
     else if (n.type === "com") action = "a commenté : « " + (n.texte || "") + " »";
     else if (n.type === "abo") action = "s'est abonné à toi";
     texte.append(nom, document.createTextNode(action));
@@ -697,7 +814,7 @@ function voirLikes(likes) {
   if (likes.length === 0) {
     const v = document.createElement("div");
     v.className = "vide";
-    v.textContent = "Personne n'a encore aimé cette photo";
+    v.textContent = "Personne n'a encore aimé cette publication";
     liste.append(v);
   } else {
     const parUid = {};
@@ -733,7 +850,7 @@ function voirLikes(likes) {
 function tousLesNoms() {
   const carte = {};
   Object.keys(pseudosListe).forEach(k => { carte[k] = pseudosListe[k].nom; });
-  docs.forEach(d => {
+  tousPosts().forEach(d => {
     const u = d.data().user;
     if (u) carte[u.toLowerCase()] = u;
   });
@@ -949,7 +1066,7 @@ function majNav() {
   const surFil = !profilActuel && !convActuelle && !vueConvs;
   $("navAccueil").className = (surFil && vue === "accueil") ? "actif" : "";
   $("navRecherche").className = (surFil && vue === "recherche") ? "actif" : "";
-  $("navAbos").className = (surFil && vue === "abos") ? "actif" : "";
+  $("navVideos").className = (surFil && vue === "videos") ? "actif" : "";
   $("navProfil").className =
     (profilActuel && !convActuelle && profilActuel.toLowerCase() === moi) ? "actif" : "";
   $("btnMsgs").className = "iconeTete" + ((vueConvs || convActuelle) ? " actif" : "");
@@ -958,9 +1075,13 @@ function majNav() {
 function rendre() {
   const dansConv = !!convActuelle;
   const surFil = !profilActuel && !dansConv && !vueConvs;
-  $("creer").style.display = (surFil && vue === "accueil") ? "block" : "none";
-  $("publier").style.display = (surFil && vue === "accueil" && formOuvert) ? "block" : "none";
+  const accueil = surFil && vue === "accueil";
+  $("creer").style.display = accueil ? "block" : "none";
+  $("publier").style.display = (accueil && formOuvert) ? "block" : "none";
+  $("onglets").style.display = accueil ? "flex" : "none";
   $("barre").style.display = (surFil && vue === "recherche") ? "block" : "none";
+  $("ongTous").className = "ong" + (onglet === "tous" ? " actif" : "");
+  $("ongAbos").className = "ong" + (onglet === "abos" ? " actif" : "");
   majNav();
 
   // La conversation n'est reconstruite que si elle n'est pas déjà affichée
@@ -978,8 +1099,21 @@ function rendre() {
   if (vueConvs) { rendreConvs(); return; }
   if (vue === "recherche") { rendreRecherche(); return; }
 
-  let liste = docs;
-  if (vue === "abos") {
+  let liste = tousPosts();
+
+  if (vue === "videos") {
+    liste = liste.filter(d => videoValide(d.data().video));
+    if (liste.length === 0) {
+      const v = document.createElement("div");
+      v.className = "vide";
+      v.textContent = "Aucune vidéo pour le moment. Va sur l'accueil et appuie sur « Créer une publication » pour en ajouter une.";
+      $("fil").append(v);
+    }
+    liste.forEach(d => $("fil").append(carte(d)));
+    return;
+  }
+
+  if (onglet === "abos") {
     const moi = nomUtilisateur().toLowerCase();
     const mesAbos = suivis[moi] || [];
     if (mesAbos.length === 0) {
@@ -988,7 +1122,7 @@ function rendre() {
       v.textContent = "Tu ne suis personne. Cherche une personne avec la loupe 🔍, ouvre son profil, puis appuie sur « S'abonner ».";
       $("fil").append(v);
     }
-    liste = docs.filter(d => {
+    liste = liste.filter(d => {
       const u = (d.data().user || "").toLowerCase();
       return u === moi || mesAbos.includes(u);
     });
@@ -997,7 +1131,7 @@ function rendre() {
 }
 
 function rendreProfil() {
-  const mes = docs.filter(d => d.data().user === profilActuel);
+  const mes = tousPosts().filter(d => d.data().user === profilActuel);
   const moi = nomUtilisateur().toLowerCase();
   const cle = profilActuel.toLowerCase();
   const cestMoi = cle === moi;
@@ -1091,7 +1225,7 @@ function rendreProfil() {
   if (mes.length === 0) {
     const v = document.createElement("div");
     v.className = "vide";
-    v.textContent = "Aucune photo pour le moment";
+    v.textContent = "Aucune publication pour le moment";
     $("fil").append(v);
     return;
   }
@@ -1099,9 +1233,22 @@ function rendreProfil() {
   const grille = document.createElement("div");
   grille.className = "grille";
   mes.forEach(d => {
-    const im = document.createElement("img");
-    im.src = d.data().img;
-    grille.append(im);
+    const p = d.data();
+    if (videoValide(p.video)) {
+      const c = document.createElement("div");
+      c.className = "cell";
+      const im = document.createElement("img");
+      im.src = miniature(p.video);
+      const play = document.createElement("span");
+      play.className = "play";
+      play.textContent = "▶";
+      c.append(im, play);
+      grille.append(c);
+    } else if (p.img) {
+      const im = document.createElement("img");
+      im.src = p.img;
+      grille.append(im);
+    }
   });
   $("fil").append(grille);
 }
@@ -1109,7 +1256,7 @@ function rendreProfil() {
 function carte(d) {
   const uid = auth.currentUser.uid;
   const p = d.data();
-  const ref = doc(db, "posts", d.id);
+  const ref = d.ref;
   const likes = p.likes || [];
   const aime = likes.includes(uid);
   const cestMoi = (p.user || "").toLowerCase() === nomUtilisateur().toLowerCase();
@@ -1171,9 +1318,20 @@ function carte(d) {
     ent.append(sig);
   }
 
-  const im = document.createElement("img");
-  im.className = "photo";
-  im.src = p.img;
+  let media;
+  if (videoValide(p.video)) {
+    media = document.createElement("video");
+    media.className = "photo";
+    media.src = p.video;
+    media.poster = miniature(p.video);
+    media.controls = true;
+    media.preload = "metadata";
+    media.setAttribute("playsinline", "");
+  } else {
+    media = document.createElement("img");
+    media.className = "photo";
+    media.src = p.img || "";
+  }
 
   const a = document.createElement("div");
   a.className = "actions";
@@ -1197,7 +1355,7 @@ function carte(d) {
   ln.textContent = p.user + " ";
   l.append(ln, document.createTextNode(p.texte || ""));
 
-  div.append(ent, im, a, l);
+  div.append(ent, media, a, l);
 
   (p.commentaires || []).forEach(c => {
     const ligne = document.createElement("div");
@@ -1233,4 +1391,4 @@ function carte(d) {
 }
 </script>
 </body>
-                                         </html>
+  </html>
