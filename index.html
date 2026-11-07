@@ -101,6 +101,17 @@ try {
   .signaler { font-size:16px; opacity:.7; }
   .post img.photo { width:100%; display:block; background:var(--gris); }
   .post video { width:100%; display:block; background:#000; max-height:80vh; }
+
+  /* Plusieurs photos : on fait défiler avec le doigt */
+  .carr { position:relative; }
+  .defil { display:flex; overflow-x:auto; scroll-snap-type:x mandatory;
+           -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+  .defil::-webkit-scrollbar { display:none; }
+  .defil img { flex:0 0 100%; width:100%; scroll-snap-align:start; display:block;
+               background:var(--gris); }
+  .compteur { position:absolute; top:10px; right:10px; background:rgba(0,0,0,.6); color:#fff;
+              font-size:12px; font-weight:bold; padding:3px 9px; border-radius:12px; }
+
   .actions { padding:10px 12px 4px; font-size:26px; }
   .coeur { cursor:pointer; }
   .nblikes { font-size:14px; font-weight:bold; margin-left:8px; cursor:pointer; }
@@ -202,13 +213,13 @@ try {
     <div class="creerCarte" id="creerCarte">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
       <div class="creerTitre">Créer une publication</div>
-      <div class="creerSous">Photo ou vidéo</div>
+      <div class="creerSous">Photos ou vidéo</div>
     </div>
   </div>
 
   <div id="publier">
-    <label class="fichier" for="photo">📷 Photo</label>
-    <input id="photo" type="file" accept="image/*">
+    <label class="fichier" for="photo">📷 Photos</label>
+    <input id="photo" type="file" accept="image/*" multiple>
     <label class="fichier" for="video">🎬 Vidéo</label>
     <input id="video" type="file" accept="video/*">
     <span id="etat"></span>
@@ -273,6 +284,7 @@ const CLOUD = "kwxwbmxg";
 const PRESET = "vybora_videos";
 const VIDEO_MAX_MO = 40;
 const VIDEO_MAX_SEC = 60;
+const PHOTOS_MAX = 4;
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -463,13 +475,22 @@ $("fenetre").onclick = e => {
   if (e.target === $("fenetre")) $("fenetre").style.display = "none";
 };
 
-// Choix du fichier : une photo OU une vidéo, jamais les deux
+// Choix du fichier : des photos OU une vidéo, jamais les deux
 function majChoix() {
-  const f = $("photo").files[0] || $("video").files[0];
-  if (!f) { $("etat").textContent = ""; return; }
-  $("etat").textContent = $("video").files[0] ? "Vidéo choisie ✅" : "Photo choisie ✅";
+  const n = $("photo").files.length;
+  if ($("video").files[0]) { $("etat").textContent = "Vidéo choisie ✅"; return; }
+  if (n === 0) { $("etat").textContent = ""; return; }
+  $("etat").textContent = n === 1 ? "Photo choisie ✅" : n + " photos choisies ✅";
 }
-$("photo").onchange = () => { if ($("photo").files[0]) $("video").value = ""; majChoix(); };
+$("photo").onchange = () => {
+  if ($("photo").files.length > PHOTOS_MAX) {
+    $("photo").value = "";
+    $("etat").textContent = PHOTOS_MAX + " photos maximum par publication";
+    return;
+  }
+  if ($("photo").files.length > 0) $("video").value = "";
+  majChoix();
+};
 $("video").onchange = () => { if ($("video").files[0]) $("photo").value = ""; majChoix(); };
 
 onAuthStateChanged(auth, user => {
@@ -500,8 +521,9 @@ onAuthStateChanged(auth, user => {
   }
 });
 
-// Réduit la photo pour qu'elle reste légère (moins de ~350 Ko)
-function reduirePhoto(fichier) {
+// Réduit la photo. Si on envoie plusieurs photos, elles sont plus légères
+// pour que la publication reste sous la limite de Firebase.
+function reduirePhoto(fichier, petite) {
   return new Promise((ok, erreur) => {
     const lecteur = new FileReader();
     lecteur.onerror = erreur;
@@ -509,7 +531,11 @@ function reduirePhoto(fichier) {
       const img = new Image();
       img.onerror = erreur;
       img.onload = () => {
-        const essais = [[600, 0.6], [500, 0.5], [400, 0.45], [320, 0.4]];
+        const essais = petite
+          ? [[480, 0.5], [400, 0.45], [320, 0.4], [260, 0.35]]
+          : [[600, 0.6], [500, 0.5], [400, 0.45], [320, 0.4]];
+        const seuil = petite ? 130000 : 350000;
+        const limite = petite ? 180000 : 440000;
         let resultat = "";
         for (let i = 0; i < essais.length; i++) {
           const max = essais[i][0];
@@ -520,9 +546,9 @@ function reduirePhoto(fichier) {
           c.height = Math.max(1, Math.round(img.height * echelle));
           c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
           resultat = c.toDataURL("image/jpeg", q);
-          if (resultat.length < 350000) break;
+          if (resultat.length < seuil) break;
         }
-        if (resultat.length >= 440000) erreur(new Error("photo trop grande"));
+        if (resultat.length >= limite) erreur(new Error("photo trop grande"));
         else ok(resultat);
       };
       img.src = lecteur.result;
@@ -598,21 +624,50 @@ function videoValide(url) {
   return typeof url === "string" && url.startsWith("https://res.cloudinary.com/");
 }
 
+// Toutes les photos d'une publication (la première + les suivantes)
+function toutesPhotos(p) {
+  const liste = [];
+  if (typeof p.img === "string" && p.img.startsWith("data:image/")) liste.push(p.img);
+  if (Array.isArray(p.plus)) {
+    p.plus.forEach(x => {
+      if (typeof x === "string" && x.startsWith("data:image/")) liste.push(x);
+    });
+  }
+  return liste;
+}
+
 $("btnPublier").onclick = async () => {
-  const fichier = $("photo").files[0] || $("video").files[0];
-  if (!fichier) { $("etat").textContent = "Choisis une photo ou une vidéo d'abord"; return; }
-  const estVideo = !!$("video").files[0] || fichier.type.startsWith("video/");
-  if (!estVideo && !fichier.type.startsWith("image/")) {
-    $("etat").textContent = "Ce fichier n'est ni une photo ni une vidéo";
+  const lesPhotos = Array.from($("photo").files);
+  const fichierVideo = $("video").files[0];
+  const estVideo = !!fichierVideo;
+  if (!estVideo && lesPhotos.length === 0) {
+    $("etat").textContent = "Choisis une photo ou une vidéo d'abord";
     return;
   }
-  if (estVideo && fichier.size > VIDEO_MAX_MO * 1024 * 1024) {
-    $("etat").textContent = "Vidéo trop lourde (" + VIDEO_MAX_MO + " Mo maximum)";
-    return;
-  }
-  if (!estVideo && fichier.size > 15 * 1024 * 1024) {
-    $("etat").textContent = "Photo trop lourde (15 Mo maximum)";
-    return;
+  if (estVideo) {
+    if (!fichierVideo.type.startsWith("video/")) {
+      $("etat").textContent = "Ce fichier n'est pas une vidéo";
+      return;
+    }
+    if (fichierVideo.size > VIDEO_MAX_MO * 1024 * 1024) {
+      $("etat").textContent = "Vidéo trop lourde (" + VIDEO_MAX_MO + " Mo maximum)";
+      return;
+    }
+  } else {
+    if (lesPhotos.length > PHOTOS_MAX) {
+      $("etat").textContent = PHOTOS_MAX + " photos maximum par publication";
+      return;
+    }
+    for (const f of lesPhotos) {
+      if (!f.type.startsWith("image/")) {
+        $("etat").textContent = "Un des fichiers n'est pas une image";
+        return;
+      }
+      if (f.size > 15 * 1024 * 1024) {
+        $("etat").textContent = "Une photo est trop lourde (15 Mo maximum)";
+        return;
+      }
+    }
   }
   if (Date.now() - dernierePub < 15000) {
     $("etat").textContent = "Attends quelques secondes avant de republier";
@@ -622,10 +677,10 @@ $("btnPublier").onclick = async () => {
   $("etat").textContent = "Publication...";
   try {
     if (estVideo) {
-      const d = await dureeVideo(fichier);
+      const d = await dureeVideo(fichierVideo);
       if (d > VIDEO_MAX_SEC) throw new Error("vidéo trop longue (" + VIDEO_MAX_SEC + " secondes maximum)");
       $("etat").textContent = "Envoi de la vidéo... 0 %";
-      const url = await envoyerVideo(fichier, p => {
+      const url = await envoyerVideo(fichierVideo, p => {
         $("etat").textContent = "Envoi de la vidéo... " + p + " %";
       });
       await addDoc(collection(db, "videos"), {
@@ -637,15 +692,24 @@ $("btnPublier").onclick = async () => {
         date: serverTimestamp()
       });
     } else {
-      const img = await reduirePhoto(fichier);
-      await addDoc(collection(db, "posts"), {
+      const petite = lesPhotos.length > 1;
+      const liste = [];
+      for (let i = 0; i < lesPhotos.length; i++) {
+        if (petite) $("etat").textContent = "Préparation des photos... " + (i + 1) + "/" + lesPhotos.length;
+        liste.push(await reduirePhoto(lesPhotos[i], petite));
+      }
+      const total = liste.reduce((s, x) => s + x.length, 0);
+      if (total > 900000) throw new Error("photos trop lourdes, essaie avec moins de photos");
+      const data = {
         user: nomUtilisateur(),
         texte: $("legende").value.trim().slice(0, 300),
-        img: img,
+        img: liste[0],
         likes: [],
         commentaires: [],
         date: serverTimestamp()
-      });
+      };
+      if (liste.length > 1) data.plus = liste.slice(1);
+      await addDoc(collection(db, "posts"), data);
     }
     dernierePub = Date.now();
     $("photo").value = "";
@@ -657,6 +721,8 @@ $("btnPublier").onclick = async () => {
   } catch (e) {
     if (estVideo && e.code === "permission-denied") {
       $("etat").textContent = "Erreur : les règles Firebase des vidéos ne sont pas encore publiées";
+    } else if (e.code === "permission-denied") {
+      $("etat").textContent = "Erreur : les règles Firebase des photos multiples ne sont pas encore publiées";
     } else {
       $("etat").textContent = "Erreur : " + (e.code || e.message || "impossible");
     }
@@ -1244,10 +1310,22 @@ function rendreProfil() {
       play.textContent = "▶";
       c.append(im, play);
       grille.append(c);
-    } else if (p.img) {
+    } else {
+      const lesImgs = toutesPhotos(p);
+      if (lesImgs.length === 0) return;
       const im = document.createElement("img");
-      im.src = p.img;
-      grille.append(im);
+      im.src = lesImgs[0];
+      if (lesImgs.length > 1) {
+        const c = document.createElement("div");
+        c.className = "cell";
+        const icone = document.createElement("span");
+        icone.className = "play";
+        icone.textContent = "❐";
+        c.append(im, icone);
+        grille.append(c);
+      } else {
+        grille.append(im);
+      }
     }
   });
   $("fil").append(grille);
@@ -1319,6 +1397,7 @@ function carte(d) {
   }
 
   let media;
+  const lesImgs = toutesPhotos(p);
   if (videoValide(p.video)) {
     media = document.createElement("video");
     media.className = "photo";
@@ -1327,10 +1406,28 @@ function carte(d) {
     media.controls = true;
     media.preload = "metadata";
     media.setAttribute("playsinline", "");
+  } else if (lesImgs.length > 1) {
+    media = document.createElement("div");
+    media.className = "carr";
+    const defil = document.createElement("div");
+    defil.className = "defil";
+    lesImgs.forEach(src => {
+      const im = document.createElement("img");
+      im.src = src;
+      defil.append(im);
+    });
+    const compteur = document.createElement("div");
+    compteur.className = "compteur";
+    compteur.textContent = "1/" + lesImgs.length;
+    defil.onscroll = () => {
+      const i = Math.round(defil.scrollLeft / Math.max(1, defil.clientWidth));
+      compteur.textContent = (i + 1) + "/" + lesImgs.length;
+    };
+    media.append(defil, compteur);
   } else {
     media = document.createElement("img");
     media.className = "photo";
-    media.src = p.img || "";
+    media.src = lesImgs[0] || "";
   }
 
   const a = document.createElement("div");
@@ -1391,4 +1488,4 @@ function carte(d) {
 }
 </script>
 </body>
-  </html>
+      </html
