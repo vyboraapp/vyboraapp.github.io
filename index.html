@@ -98,6 +98,7 @@ try {
   .nom { font-weight:bold; font-size:14px; }
   .heure { font-size:12px; color:var(--grisTexte); margin-top:2px; }
   .suppr { margin-left:auto; background:none; border:none; font-size:20px; cursor:pointer; padding:4px 6px; }
+  .suppr + .suppr { margin-left:0; }
   .signaler { font-size:16px; opacity:.7; }
   .post img.photo { width:100%; display:block; background:var(--gris); }
   .post video { width:100%; display:block; background:#000; max-height:80vh; }
@@ -116,6 +117,10 @@ try {
   .coeur { cursor:pointer; }
   .nblikes { font-size:14px; font-weight:bold; margin-left:8px; cursor:pointer; }
   .legende, .com { padding:2px 12px; font-size:14px; line-height:1.4; word-wrap:break-word; }
+  .edit { display:flex; gap:6px; align-items:center; padding:6px 12px; }
+  .edit input { flex:1; min-width:0; padding:8px; border:1px solid var(--bord);
+                border-radius:6px; font-size:14px; }
+  .edit .btn { padding:8px 10px; font-size:13px; }
   .nouveau { display:flex; gap:8px; padding:10px 12px 12px; border-top:1px solid var(--gris); margin-top:8px; }
   .nouveau input { flex:1; padding:9px; border:1px solid var(--bord); border-radius:6px; }
   .nouveau button { background:none; border:none; color:#0095f6; font-weight:bold; cursor:pointer; }
@@ -310,6 +315,7 @@ let dernierMsg = 0;
 let convActuelle = null;
 let messagesConv = [];
 let arretMessages = null;
+let edition = null; // légende en cours de modification : { id, texte }
 
 // Mode sombre / clair
 function majTheme() {
@@ -440,6 +446,7 @@ $("btnOublie").onclick = async () => {
 // Navigation : barre du bas et en-tête
 function aller(v) {
   fermerConv();
+  edition = null;
   profilActuel = null;
   vueConvs = false;
   vue = v;
@@ -460,6 +467,7 @@ $("navNotif").onclick = () => voirNotifs();
 $("navProfil").onclick = () => ouvrirProfil(nomUtilisateur());
 $("btnMsgs").onclick = () => {
   fermerConv();
+  edition = null;
   profilActuel = null;
   vueConvs = true;
   rendre();
@@ -500,6 +508,7 @@ onAuthStateChanged(auth, user => {
   arrets.forEach(f => f());
   arrets = [];
   fermerConv();
+  edition = null;
   profilActuel = null;
   vue = "accueil";
   onglet = "tous";
@@ -844,6 +853,7 @@ function voirNotifs() {
 
 function ouvrirProfil(nom) {
   fermerConv();
+  edition = null;
   vueConvs = false;
   profilActuel = nom;
   recherche = "";
@@ -1360,6 +1370,15 @@ function carte(d) {
   ent.append(avatar(p.user, false), colonne);
 
   if (cestMoi) {
+    const modif = document.createElement("button");
+    modif.className = "suppr";
+    modif.textContent = "✏️";
+    modif.title = "Modifier la légende";
+    modif.onclick = e => {
+      e.stopPropagation();
+      edition = { id: d.id, texte: p.texte || "" };
+      rendre();
+    };
     const sup = document.createElement("button");
     sup.className = "suppr";
     sup.textContent = "🗑️";
@@ -1372,7 +1391,7 @@ function carte(d) {
         alert("Suppression impossible : " + err.code);
       }
     };
-    ent.append(sup);
+    ent.append(modif, sup);
   } else {
     const sig = document.createElement("button");
     sig.className = "suppr signaler";
@@ -1446,11 +1465,44 @@ function carte(d) {
   nb.onclick = () => voirLikes(likes);
   a.append(coeur, nb);
 
-  const l = document.createElement("div");
-  l.className = "legende";
-  const ln = document.createElement("b");
-  ln.textContent = p.user + " ";
-  l.append(ln, document.createTextNode(p.texte || ""));
+  // Légende : texte normal, ou champ de modification si on est en train de l'éditer
+  let l;
+  if (edition && edition.id === d.id && cestMoi) {
+    l = document.createElement("div");
+    l.className = "edit";
+    const champ = document.createElement("input");
+    champ.type = "text";
+    champ.maxLength = 300;
+    champ.value = edition.texte;
+    champ.oninput = () => { edition.texte = champ.value; };
+    const ok = document.createElement("button");
+    ok.className = "btn";
+    ok.textContent = "Enregistrer";
+    ok.onclick = async () => {
+      const t = champ.value.trim().slice(0, 300);
+      ok.disabled = true;
+      try {
+        await updateDoc(ref, { texte: t });
+        edition = null;
+        rendre();
+      } catch (err) {
+        alert("Modification impossible : " + (err.code || "erreur"));
+        ok.disabled = false;
+      }
+    };
+    const non = document.createElement("button");
+    non.className = "btn gris";
+    non.textContent = "Annuler";
+    non.onclick = () => { edition = null; rendre(); };
+    l.append(champ, ok, non);
+    setTimeout(() => champ.focus(), 0);
+  } else {
+    l = document.createElement("div");
+    l.className = "legende";
+    const ln = document.createElement("b");
+    ln.textContent = p.user + " ";
+    l.append(ln, document.createTextNode(p.texte || ""));
+  }
 
   div.append(ent, media, a, l);
 
@@ -1488,4 +1540,4 @@ function carte(d) {
 }
 </script>
 </body>
-      </html
+  </html>
