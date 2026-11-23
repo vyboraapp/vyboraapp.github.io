@@ -59,6 +59,45 @@ try {
   #recherche { width:100%; padding:11px 14px; border:1px solid var(--bord); border-radius:20px;
                background:var(--gris); font-size:14px; }
 
+  /* Stories */
+  #stories { width:calc(100% - 24px); max-width:500px; margin:12px auto 0; display:none;
+             gap:12px; overflow-x:auto; padding-bottom:4px; scrollbar-width:none; }
+  #stories::-webkit-scrollbar { display:none; }
+  .sBulle { display:flex; flex-direction:column; align-items:center; gap:4px; width:68px;
+            flex:0 0 auto; cursor:pointer; }
+  .sRoue { position:relative; }
+  .sAnneau { padding:3px; border-radius:50%;
+             background:linear-gradient(45deg,#f09433,#dc2743,#bc1888); }
+  .sAnneau.vu { background:var(--bord); }
+  .sAnneau.aucun { background:none; }
+  .sAnneau .avatar { width:58px; height:58px; font-size:22px; border:2px solid var(--fond); }
+  .sPlus { position:absolute; right:-2px; bottom:-2px; width:22px; height:22px; border-radius:50%;
+           background:#0095f6; color:#fff; font-weight:bold; font-size:15px; line-height:18px;
+           text-align:center; border:2px solid var(--fond); }
+  .sNom { font-size:12px; max-width:68px; overflow:hidden; text-overflow:ellipsis;
+          white-space:nowrap; }
+
+  #viewer { position:fixed; top:0; left:0; right:0; bottom:0; background:#000; z-index:30;
+            display:none; flex-direction:column; }
+  .vBarres { display:flex; gap:4px; padding:10px 10px 6px; }
+  .vBarre { flex:1; height:3px; background:rgba(255,255,255,.35); border-radius:2px; overflow:hidden; }
+  .vBarre i { display:block; height:100%; width:0; background:#fff; }
+  .vTete { display:flex; align-items:center; gap:10px; padding:4px 12px; color:#fff; }
+  .vTete .nom { color:#fff; }
+  .vTete .heure { color:#ccc; margin-top:0; }
+  .vTete .espace { flex:1; }
+  .vTete button { background:none; border:none; color:#fff; font-size:22px; cursor:pointer; padding:4px 8px; }
+  .vScene { flex:1; position:relative; display:flex; align-items:center;
+            justify-content:center; min-height:0; }
+  .vScene img, .vScene video { max-width:100%; max-height:100%; object-fit:contain; }
+  .vZones { position:absolute; top:0; left:0; right:0; bottom:0; display:flex; }
+  .vZones div:first-child { flex:0 0 30%; }
+  .vZones div:last-child { flex:1; }
+
+  #toast { position:fixed; left:50%; bottom:76px; transform:translateX(-50%); z-index:40;
+           background:rgba(0,0,0,.85); color:#fff; padding:10px 16px; border-radius:20px;
+           font-size:14px; display:none; max-width:90%; text-align:center; }
+
   #creer { width:calc(100% - 24px); max-width:500px; margin:14px auto; display:none; }
   .creerCarte { background:var(--gris); border-radius:14px; padding:22px 14px;
                 text-align:center; cursor:pointer; }
@@ -157,6 +196,7 @@ try {
   .qui.nonlu { background:var(--bleuClair); }
   .qui .texte { font-size:14px; line-height:1.35; }
   .qui .quand { font-size:12px; color:var(--grisTexte); margin-top:2px; }
+  .choix { padding:14px; font-size:16px; font-weight:bold; }
 
   /* Messages privés */
   #chat { max-width:500px; margin:8px auto 24px; background:var(--carte);
@@ -214,6 +254,8 @@ try {
     <input id="recherche" type="search" maxlength="30" placeholder="🔍 Rechercher une personne...">
   </div>
 
+  <div id="stories"></div>
+
   <div id="creer">
     <div class="creerCarte" id="creerCarte">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
@@ -259,6 +301,9 @@ try {
   </nav>
 </div>
 
+<input id="storyPhoto" type="file" accept="image/*" style="display:none">
+<input id="storyVideo" type="file" accept="video/*" style="display:none">
+
 <div id="fenetre">
   <div id="boite">
     <div id="boiteTete"><b id="boiteTitre">Mentions J'aime</b><button id="fermer">✕</button></div>
@@ -266,12 +311,15 @@ try {
   </div>
 </div>
 
+<div id="viewer"></div>
+<div id="toast"></div>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
          signOut, onAuthStateChanged, updateProfile, sendPasswordResetEmail }
   from "https://www.gstatic.com/firebasejs/13.1.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, where,
+import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, where, limit,
          serverTimestamp, doc, updateDoc, arrayUnion, arrayRemove, getDoc, setDoc, deleteDoc }
   from "https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js";
 
@@ -289,6 +337,8 @@ const CLOUD = "kwxwbmxg";
 const PRESET = "vybora_videos";
 const VIDEO_MAX_MO = 40;
 const VIDEO_MAX_SEC = 60;
+const STORY_MAX_SEC = 30;
+const STORY_PHOTO_MS = 5000;
 const PHOTOS_MAX = 4;
 
 const app = initializeApp(firebaseConfig);
@@ -298,6 +348,7 @@ const $ = id => document.getElementById(id);
 let arrets = [];
 let docs = [];
 let videosDocs = [];
+let storiesDocs = [];
 let photos = {};
 let suivis = {};
 let pseudosListe = {};
@@ -312,10 +363,13 @@ let recherche = "";
 let dernierePub = 0;
 let dernierCom = 0;
 let dernierMsg = 0;
+let dernierStory = 0;
 let convActuelle = null;
 let messagesConv = [];
 let arretMessages = null;
 let edition = null; // légende en cours de modification : { id, texte }
+let viewer = null;  // story en cours de lecture : { nom, items, i, timer }
+let timerToast = null;
 
 // Mode sombre / clair
 function majTheme() {
@@ -337,6 +391,15 @@ function nomUtilisateur() {
   return u.displayName || u.email.split("@")[0];
 }
 
+// Petit message en bas de l'écran
+function toast(msg, ms) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.style.display = "block";
+  clearTimeout(timerToast);
+  if (ms) timerToast = setTimeout(() => { t.style.display = "none"; }, ms);
+}
+
 // Temps écoulé depuis une publication
 function depuis(ms) {
   const s = Math.floor((Date.now() - ms) / 1000);
@@ -355,6 +418,11 @@ setInterval(() => {
     e.textContent = depuis(Number(e.dataset.ms));
   });
 }, 30000);
+
+// Les stories de plus de 24 h disparaissent de la rangée
+setInterval(() => {
+  if (auth.currentUser && !viewer) rendreStories();
+}, 120000);
 
 // Réserve le pseudo d'un ancien compte s'il est encore libre
 async function reserver(nom) {
@@ -508,6 +576,7 @@ onAuthStateChanged(auth, user => {
   arrets.forEach(f => f());
   arrets = [];
   fermerConv();
+  fermerViewer(false);
   edition = null;
   profilActuel = null;
   vue = "accueil";
@@ -518,6 +587,7 @@ onAuthStateChanged(auth, user => {
   $("recherche").value = "";
   docs = [];
   videosDocs = [];
+  storiesDocs = [];
   photos = {};
   suivis = {};
   pseudosListe = {};
@@ -739,6 +809,312 @@ $("btnPublier").onclick = async () => {
   $("btnPublier").disabled = false;
 };
 
+// ---------- Stories ----------
+
+const CLE_VUS = "vybora_vus";
+
+function lireVus() {
+  try { return JSON.parse(localStorage.getItem(CLE_VUS) || "{}"); } catch (e) { return {}; }
+}
+function marquerVu(id) {
+  try {
+    const v = lireVus();
+    v[id] = Date.now();
+    const cles = Object.keys(v);
+    if (cles.length > 300) {
+      cles.sort((a, b) => v[a] - v[b]).slice(0, cles.length - 300).forEach(k => { delete v[k]; });
+    }
+    localStorage.setItem(CLE_VUS, JSON.stringify(v));
+  } catch (e) {}
+}
+
+// Stories de moins de 24 h
+function storiesActives() {
+  const limiteMs = Date.now() - 24 * 3600 * 1000;
+  return storiesDocs.filter(d => msDoc(d) > limiteMs);
+}
+
+// Regroupe les stories par personne (les plus anciennes d'abord)
+function groupesStories() {
+  const m = {};
+  storiesActives().slice().sort((a, b) => msDoc(a) - msDoc(b)).forEach(d => {
+    const u = d.data().user || "";
+    const k = u.toLowerCase();
+    if (!m[k]) m[k] = { nom: u, items: [] };
+    m[k].items.push(d);
+  });
+  return m;
+}
+
+function bulleStory(nom, items, estMoi, vus) {
+  const b = document.createElement("div");
+  b.className = "sBulle";
+  const roue = document.createElement("div");
+  roue.className = "sRoue";
+  const anneau = document.createElement("div");
+  const nonVu = items.some(d => !vus[d.id]);
+  anneau.className = "sAnneau" + (items.length === 0 ? " aucun" : (nonVu ? "" : " vu"));
+  anneau.append(avatar(nom, false));
+  roue.append(anneau);
+  if (estMoi) {
+    const plus = document.createElement("div");
+    plus.className = "sPlus";
+    plus.textContent = "+";
+    plus.onclick = e => { e.stopPropagation(); choixStory(); };
+    roue.append(plus);
+  }
+  const n = document.createElement("div");
+  n.className = "sNom";
+  n.textContent = estMoi ? "Ta story" : nom;
+  b.append(roue, n);
+  b.onclick = () => {
+    if (items.length > 0) ouvrirStories(nom);
+    else if (estMoi) choixStory();
+  };
+  return b;
+}
+
+function rendreStories() {
+  const zone = $("stories");
+  if (!zone) return;
+  zone.innerHTML = "";
+  const g = groupesStories();
+  const vus = lireVus();
+  const moi = nomUtilisateur();
+  const moiK = moi.toLowerCase();
+
+  zone.append(bulleStory(moi, g[moiK] ? g[moiK].items : [], true, vus));
+
+  Object.keys(g)
+    .filter(k => k !== moiK)
+    .map(k => g[k])
+    .sort((a, b) => {
+      const na = a.items.some(d => !vus[d.id]) ? 0 : 1;
+      const nb = b.items.some(d => !vus[d.id]) ? 0 : 1;
+      if (na !== nb) return na - nb;
+      return msDoc(b.items[b.items.length - 1]) - msDoc(a.items[a.items.length - 1]);
+    })
+    .forEach(x => zone.append(bulleStory(x.nom, x.items, false, vus)));
+}
+
+// Fenêtre « ajouter à ta story »
+function choixStory() {
+  $("boiteTitre").textContent = "Ajouter à ta story";
+  const liste = $("boiteListe");
+  liste.innerHTML = "";
+  const l1 = document.createElement("label");
+  l1.className = "qui choix";
+  l1.htmlFor = "storyPhoto";
+  l1.textContent = "📷 Photo";
+  const l2 = document.createElement("label");
+  l2.className = "qui choix";
+  l2.htmlFor = "storyVideo";
+  l2.textContent = "🎬 Vidéo (" + STORY_MAX_SEC + " s maximum)";
+  liste.append(l1, l2);
+  $("fenetre").style.display = "flex";
+}
+
+$("storyPhoto").onchange = () => {
+  const f = $("storyPhoto").files[0];
+  $("storyPhoto").value = "";
+  $("fenetre").style.display = "none";
+  if (f) publierStory(f, false);
+};
+$("storyVideo").onchange = () => {
+  const f = $("storyVideo").files[0];
+  $("storyVideo").value = "";
+  $("fenetre").style.display = "none";
+  if (f) publierStory(f, true);
+};
+
+async function publierStory(f, estVideo) {
+  if (Date.now() - dernierStory < 5000) {
+    toast("Attends quelques secondes avant de republier", 2500);
+    return;
+  }
+  try {
+    if (estVideo) {
+      if (!f.type.startsWith("video/")) throw new Error("ce fichier n'est pas une vidéo");
+      if (f.size > VIDEO_MAX_MO * 1024 * 1024) throw new Error("vidéo trop lourde (" + VIDEO_MAX_MO + " Mo maximum)");
+      const d = await dureeVideo(f);
+      if (d > STORY_MAX_SEC) throw new Error("vidéo trop longue (" + STORY_MAX_SEC + " secondes maximum)");
+      toast("Envoi de ta story... 0 %");
+      const url = await envoyerVideo(f, p => toast("Envoi de ta story... " + p + " %"));
+      await addDoc(collection(db, "stories"), {
+        user: nomUtilisateur(),
+        video: url,
+        date: serverTimestamp()
+      });
+    } else {
+      if (!f.type.startsWith("image/")) throw new Error("ce fichier n'est pas une image");
+      if (f.size > 15 * 1024 * 1024) throw new Error("photo trop lourde (15 Mo maximum)");
+      toast("Préparation de ta story...");
+      const img = await reduirePhoto(f, false);
+      await addDoc(collection(db, "stories"), {
+        user: nomUtilisateur(),
+        img: img,
+        date: serverTimestamp()
+      });
+    }
+    dernierStory = Date.now();
+    toast("Story publiée ✅", 2500);
+  } catch (e) {
+    const msg = e.code === "permission-denied"
+      ? "les règles Firebase des stories ne sont pas publiées"
+      : (e.message || "impossible");
+    toast("Erreur : " + msg, 5000);
+  }
+}
+
+// Lecture plein écran des stories d'une personne
+function ouvrirStories(nom) {
+  const g = groupesStories()[(nom || "").toLowerCase()];
+  if (!g || g.items.length === 0) return;
+  const vus = lireVus();
+  let debut = g.items.findIndex(d => !vus[d.id]);
+  if (debut < 0) debut = 0;
+  viewer = { nom: g.nom, items: g.items.slice(), i: debut, timer: null };
+  $("viewer").style.display = "flex";
+  afficherStory();
+}
+
+function suivante() {
+  if (!viewer) return;
+  if (viewer.i < viewer.items.length - 1) {
+    viewer.i++;
+    afficherStory();
+  } else {
+    fermerViewer(true);
+  }
+}
+function precedente() {
+  if (!viewer) return;
+  if (viewer.i > 0) viewer.i--;
+  afficherStory();
+}
+
+function fermerViewer(maj) {
+  if (viewer) clearTimeout(viewer.timer);
+  viewer = null;
+  const v = $("viewer");
+  v.style.display = "none";
+  v.innerHTML = "";
+  if (maj && auth.currentUser) rendre();
+}
+
+function afficherStory() {
+  if (!viewer) return;
+  clearTimeout(viewer.timer);
+  const idx = viewer.i;
+  const it = viewer.items[idx];
+  const p = it.data();
+  marquerVu(it.id);
+  const v = $("viewer");
+  v.innerHTML = "";
+
+  const barres = document.createElement("div");
+  barres.className = "vBarres";
+  let courante = null;
+  viewer.items.forEach((_, k) => {
+    const b = document.createElement("div");
+    b.className = "vBarre";
+    const i = document.createElement("i");
+    if (k < idx) i.style.width = "100%";
+    if (k === idx) courante = i;
+    b.append(i);
+    barres.append(b);
+  });
+
+  const tete = document.createElement("div");
+  tete.className = "vTete";
+  const colonne = document.createElement("div");
+  const nom = document.createElement("div");
+  nom.className = "nom";
+  nom.textContent = viewer.nom;
+  const heure = document.createElement("div");
+  heure.className = "heure";
+  heure.textContent = depuis(msDoc(it));
+  colonne.append(nom, heure);
+  const espace = document.createElement("div");
+  espace.className = "espace";
+  tete.append(avatar(viewer.nom, false), colonne, espace);
+
+  if ((p.user || "").toLowerCase() === nomUtilisateur().toLowerCase()) {
+    const sup = document.createElement("button");
+    sup.textContent = "🗑️";
+    sup.onclick = async e => {
+      e.stopPropagation();
+      if (!confirm("Supprimer cette story ?")) return;
+      clearTimeout(viewer.timer);
+      try {
+        await deleteDoc(it.ref);
+        viewer.items.splice(viewer.i, 1);
+        if (viewer.items.length === 0) {
+          fermerViewer(true);
+        } else {
+          if (viewer.i >= viewer.items.length) viewer.i = viewer.items.length - 1;
+          afficherStory();
+        }
+      } catch (err) {
+        alert("Suppression impossible : " + (err.code || "erreur"));
+        afficherStory();
+      }
+    };
+    tete.append(sup);
+  }
+  const fermer = document.createElement("button");
+  fermer.textContent = "✕";
+  fermer.onclick = () => fermerViewer(true);
+  tete.append(fermer);
+
+  const scene = document.createElement("div");
+  scene.className = "vScene";
+
+  // Lance la barre de progression et passe à la suite après "ms" millisecondes
+  function lancer(ms) {
+    if (!viewer || viewer.i !== idx) return;
+    clearTimeout(viewer.timer);
+    if (courante) {
+      courante.style.transition = "none";
+      courante.style.width = "0";
+      void courante.offsetWidth;
+      courante.style.transition = "width " + ms + "ms linear";
+      courante.style.width = "100%";
+    }
+    viewer.timer = setTimeout(suivante, ms);
+  }
+
+  let media;
+  if (videoValide(p.video)) {
+    media = document.createElement("video");
+    media.src = p.video;
+    media.autoplay = true;
+    media.setAttribute("playsinline", "");
+    media.onloadedmetadata = () => {
+      const d = (media.duration && isFinite(media.duration)) ? media.duration : 10;
+      lancer(Math.min(STORY_MAX_SEC * 1000, Math.round(d * 1000)));
+    };
+    media.onended = () => { if (viewer && viewer.i === idx) suivante(); };
+    media.onerror = () => lancer(3000);
+    viewer.timer = setTimeout(suivante, 35000);
+  } else {
+    media = document.createElement("img");
+    media.src = p.img || "";
+    lancer(STORY_PHOTO_MS);
+  }
+
+  const zones = document.createElement("div");
+  zones.className = "vZones";
+  const gauche = document.createElement("div");
+  gauche.onclick = precedente;
+  const droite = document.createElement("div");
+  droite.onclick = suivante;
+  zones.append(gauche, droite);
+
+  scene.append(media, zones);
+  v.append(barres, tete, scene);
+}
+
 function afficherFil() {
   const q = query(collection(db, "posts"), orderBy("date", "desc"));
   arrets.push(onSnapshot(q, snap => {
@@ -749,6 +1125,11 @@ function afficherFil() {
   arrets.push(onSnapshot(qv, snap => {
     videosDocs = snap.docs;
     rendre();
+  }, () => {}));
+  const qs = query(collection(db, "stories"), orderBy("date", "desc"), limit(60));
+  arrets.push(onSnapshot(qs, snap => {
+    storiesDocs = snap.docs;
+    if (!viewer) rendreStories();
   }, () => {}));
   arrets.push(onSnapshot(collection(db, "profils"), snap => {
     photos = {};
@@ -1152,6 +1533,7 @@ function rendre() {
   const dansConv = !!convActuelle;
   const surFil = !profilActuel && !dansConv && !vueConvs;
   const accueil = surFil && vue === "accueil";
+  $("stories").style.display = accueil ? "flex" : "none";
   $("creer").style.display = accueil ? "block" : "none";
   $("publier").style.display = (accueil && formOuvert) ? "block" : "none";
   $("onglets").style.display = accueil ? "flex" : "none";
@@ -1159,6 +1541,7 @@ function rendre() {
   $("ongTous").className = "ong" + (onglet === "tous" ? " actif" : "");
   $("ongAbos").className = "ong" + (onglet === "abos" ? " actif" : "");
   majNav();
+  if (accueil) rendreStories();
 
   // La conversation n'est reconstruite que si elle n'est pas déjà affichée
   // (sinon on perdrait le texte en cours d'écriture)
@@ -1540,4 +1923,4 @@ function carte(d) {
 }
 </script>
 </body>
-  </html>
+</html>
